@@ -1,0 +1,1 @@
+python capture_poses.py
