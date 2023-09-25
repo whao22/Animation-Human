@@ -18,7 +18,7 @@ After executing the following command, Blender will open automatically. Click on
 bash scripts/server_start.sh
 ```
 
-`<img src=".assets/blendef_demo.png" width="100px">`
+![img](.assets/blender_demo.png)
 
 Then execute the following command to start a process for simulating real-time data reception.
 
