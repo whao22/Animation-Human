@@ -2,7 +2,7 @@
 
 This project is used to drive a given model's animation using the output from IMU (Inertial Measurement Unit) devices. The project is still in progress...
 
-![img](.assets/demo1.gif "aa")
+![img](assets/demo1.gif "aa")
 
 # Requirements
 
@@ -18,7 +18,7 @@ After executing the following command, Blender will open automatically. Click on
 bash scripts/server_start.sh
 ```
 
-![img](.assets/blender_demo.png)
+![img](assets/blender_demo.png)
 
 Then execute the following command to start a process for simulating real-time data reception.
 
@@ -28,9 +28,11 @@ bash scripts/client_start.sh
 
 The characters in Blender will animate according to the provided motion. You can change the character by replacing a different .blend file in the server_start.sh script, but please remember to modify the bone mapping in capture_poses.py accordingly.
 
-## Scripts 
+## Scripts
 
 The script in `tools/paint_weights.py` used for assign weights for all points in each vertex group. Please add your bone armature into an empty .blend file and run `blender path/to/xx.blend -P tools/paint_weights.py`.
+
+![img](assets/paint-weight.png)
 
 # Acknowledge
 
