@@ -28,6 +28,10 @@ bash scripts/client_start.sh
 
 The characters in Blender will animate according to the provided motion. You can change the character by replacing a different .blend file in the server_start.sh script, but please remember to modify the bone mapping in capture_poses.py accordingly.
 
+## Scripts 
+
+The script in `tools/paint_weights.py` used for assign weights for all points in each vertex group. Please add your bone armature into an empty .blend file and run `blender path/to/xx.blend -P tools/paint_weights.py`.
+
 # Acknowledge
 
 Our code took reference from [Blender](https://github.com/blender/blender-addons/tree/main/io_anim_bvh), [live_mocap](https://github.com/EasternJournalist/live_mocap). We thank these authors for their great works and open-source contribution.
