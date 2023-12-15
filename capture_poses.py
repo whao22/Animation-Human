@@ -215,44 +215,12 @@ def deformation(rotations):
         _type_: _description_
     """
     N_frames, N_joints, _ = rotations.shape
-    # rest pose bone matrix
-    bone_rest_matrix = np.zeros([len(rotations[0]), 3, 3])
-    bone_rest_matrix[0] = np.array([[1, 0, 0], [0, 0.9939, 0.1104], [0, -0.1104, 0.9939]])
-    bone_rest_matrix[1:7] = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[7:11] = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[11:15] = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[15:23] = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    
+
     # poses matrix
     bone_matrix = Rotation.from_euler(seq="YXZ", angles=rotations.reshape(-1, 3), degrees=True).as_matrix().reshape(N_frames, N_joints, 3, 3) # (N_frames, N_joints, 3, 3)
-    # bone_matrix = np.linalg.inv(bone_rest_matrix[None, ...]) @ bone_matrix @ bone_rest_matrix[None, ...] # (N_frames, N_joints, 3, 3)
     
     bone_quat = Rotation.from_matrix(bone_matrix.reshape(-1, 3, 3)).as_quat(True).reshape(N_frames, N_joints, 4) # (x, y, z, w)
     bone_quat = bone_quat[..., [-1, 0, 1, 2]] # (w, x, y, z)
-    
-    # rotations[:, :7] = rotations[:, :7][..., [1, 2, 0]] * np.array([[[[1, 1, 1]]]])
-    # rotations[:, 7:11] = rotations[:, 7:11][..., [2, 1, 0]] * np.array([[[[-1, 1, 1]]]])
-    # rotations[:, 11:14] = rotations[:, 11:14][..., [2, 1, 0]] * np.array([[[[1, -1, 1]]]])
-    # rotations[:, 14:] = rotations[:, 14:][..., [1, 2, 0]] * np.array([[[[-1, -1, 1]]]])
-    # for j, rotation in enumerate(rotations):
-    #     for i in range(len(rotation)):
-    #         tmp = tmps_lst[j, i]
-    #         if i >= 0 and i <= 6:  # spine
-    #             rotations[j, i, 0] = tmp[1]
-    #             rotations[j, i, 1] = tmp[2]
-    #             rotations[j, i, 2] = tmp[0]
-    #         if i >= 7 and i <= 10:  # r arms
-    #             rotations[j, i, 0] = -tmp[2]
-    #             rotations[j, i, 1] = tmp[1]
-    #             rotations[j, i, 2] = tmp[0]
-    #         if i >= 11 and i <= 14:  # l arms
-    #             rotations[j, i, 0] = tmp[2]
-    #             rotations[j, i, 1] = -tmp[1]
-    #             rotations[j, i, 2] = tmp[0]
-    #         if i >= 15 and i <= 22:  # r&l legs
-    #             rotations[j, i, 0] = -tmp[1]
-    #             rotations[j, i, 1] = -tmp[2]
-    #             rotations[j, i, 2] = tmp[0]
 
     return bone_quat
 

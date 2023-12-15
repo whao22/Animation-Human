@@ -16,7 +16,7 @@ from libs.smplx.body_models import SMPLXLayer
 
 port = 6666
 
-def rot_fun(axis='x', angle=90):
+def rot_fun(axis, angle):
     matrix = Rotation.from_euler(axis, angle, degrees=True).as_matrix()
     return matrix
     
@@ -43,7 +43,6 @@ def motion_pose_to_smplx_pose(pose):
     return ret_pose
 
 def deform_mesh_obj_manual(selected_obj, cur_vertices):
-    print("befro func: ", id(selected_obj))
     # 检查选择的对象是否是网格对象
     mesh = selected_obj.data
 
@@ -52,17 +51,9 @@ def deform_mesh_obj_manual(selected_obj, cur_vertices):
     
     # 对每个顶点进行随机移动
     for i in range(num_vertices):
-        # 获取顶点的坐标
-        vertex = mesh.vertices[i]
-        current_location = selected_obj.matrix_world @ vertex.co
-
-        # 将顶点移动到新位置
-        # new_location = current_location + offset
         new_location = Vector(cur_vertices[i])
         selected_obj.data.vertices[i].co = selected_obj.matrix_world.inverted() @ new_location
         
-        # print("current_location", current_location)
-        # print("new_location", new_location)
     # 更新网格
     mesh.update()
     
@@ -77,7 +68,7 @@ class MocapBlenderOperator(bpy.types.Operator):
         # load smplx params
         B=1
         fxy_wang= '/home/wanghao/桌面/南岭项目-角色模型/FXY/wang-smplx-betas.pkl'
-        with open('/home/wanghao/下载/000.pkl', 'rb') as f:
+        with open('data/mesh_data/wanghao.pkl', 'rb') as f:
             data = pickle.load(f)
         self.betas = torch.from_numpy(data['betas']).float().reshape(B, -1)
         self.expression = torch.from_numpy(data['expression']).float().reshape(B, -1)
@@ -169,17 +160,16 @@ class MocapBlenderOperator(bpy.types.Operator):
                     
                     bone0.rotation_quaternion = bone_quats[i]
                     bone1.rotation_quaternion = bone_quats[i]
-
+                    
                 # skin model deformation
                 bone_quats = motion_pose_to_smplx_pose(np.array(bone_quats))
-                bone_quats = bone_quats[..., [1, 2, 3, 0]]
-                pose_smplx = torch.from_numpy(Rotation.from_quat(bone_quats[1:22]).as_matrix()).float().reshape(1, -1, 3, 3)
-                transl = torch.tensor([location[0],-location[2],location[1]]).float().reshape(1, 3)/100
-                # transl = torch.zeros(1, 3, dtype=torch.float32)
-                global_orient = Rotation.from_quat(bone_quats[0]).as_matrix()
-                R_x_n90 = rot_fun('x', 90)
-                global_orient = R_x_n90 @ global_orient
-                global_orient = torch.from_numpy(global_orient).float().reshape(1, 3, 3)
+                bone_quats = bone_quats[..., [1, 2, 3, 0]] # (x, y, z, w)
+                body_poses = Rotation.from_quat(bone_quats).as_matrix()
+                
+                pose_smplx = torch.from_numpy(body_poses[1:22]).float().reshape(1, -1, 3, 3)
+                transl = torch.zeros(1, 3, dtype=torch.float32)
+                global_orient = torch.from_numpy(body_poses[0]).float().reshape(1, 3, 3)
+                
                 output = self.smplxlayer(self.betas, 
                         global_orient, 
                         pose_smplx,
@@ -192,19 +182,20 @@ class MocapBlenderOperator(bpy.types.Operator):
                         self.reye_pose,
                         return_verts=True,
                         return_full_pose=True)
-                # import trimesh
-                # trimesh.Trimesh(output.vertices.reshape(-1, 3).detach().cpu().numpy()).export(f"vertices_{self.nframe}.obj")
-                cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy()
-                # cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
-                print("befro func: ", id(self.skin_model))
+                
+                cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy() # (N_points, 3)
+                # rotation 90
+                R_x_p90 = rot_fun('xyz', (90, 0, 0)) # (3, 3)
+                cur_vertices = (R_x_p90 @ cur_vertices[..., None]).squeeze()
+                # translation 
+                cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
+                
                 deform_mesh_obj_manual(self.skin_model, cur_vertices)
                 
                 
                 x, y, z = location
                 self.skeleton_armature.location = x/100, -z/100, y/100
                 self.skin_armature.location = x/100, -z/100, y/100
-                self.skin_model.location = x/100, -z/100, y/100
-                print(f"x: {x} ,y: {y} ,z: {z} ")
                 self.skeleton_armature.keyframe_insert(data_path="location", index=-1)
                 self.skin_armature.keyframe_insert(data_path="location", index=-1)
                 self.skin_model.keyframe_insert(data_path="location", index=-1)
