@@ -3,6 +3,7 @@ import socket
 import json
 import time
 import numpy as np
+import pdb
 
 port = 6666
 
@@ -51,6 +52,7 @@ class MocapBlenderOperator(bpy.types.Operator):
         # assert len(skeleton_objs) == 1, "There should be only one skeleton object"
         skeleton_objs = list(
             filter(lambda o: o.type == 'ARMATURE', bpy.data.objects))
+        
         self.skeleton0 = skeleton_objs[0]
         self.skeleton1 = skeleton_objs[1]
         self.skeleton0.location = (0, 0, 0)
@@ -201,4 +203,6 @@ def unregister():
 
 
 if __name__ == "__main__":
+    print("aaaaaaaaaaaaaaa")
     register()
+ 

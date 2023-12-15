@@ -1,0 +1,255 @@
+import bpy
+import socket
+import json
+import time
+import pickle
+import sys
+sys.path.append(".")
+import numpy as np
+from scipy.spatial.transform import Rotation
+import torch
+import pdb
+
+from mathutils import Vector
+from libs.smplx.body_models import SMPLXLayer
+
+port = 6666
+
+def rot_fun(axis='x', angle=90):
+    matrix = Rotation.from_euler(axis, angle, degrees=True).as_matrix()
+    return matrix
+    
+
+def str2data(content):
+    data = json.loads(content)
+    return data['bone_euler'], data['location'], float(data['scale']), data['bone_names']
+
+
+def stop_playback(scene):
+    print(f"{scene.frame_current} / {scene.frame_end}")
+    if scene.frame_current == scene.frame_end:
+        bpy.ops.screen.animation_cancel(restore_frame=False)
+
+def motion_pose_to_smplx_pose(pose):
+    """_summary_
+
+    Args:
+        pose (ndarray): motion pose from xsens, shape (23, 3)
+    """
+    corresponding_bone_idx = [0, 19, 15, 1, 20, 16, 3, 21, 17, 4, 22, 18, 5, 11, 7, 6, 12, 8, 13, 9, 14, 10, -1, -1]
+    ret_pose = pose[corresponding_bone_idx]
+    
+    return ret_pose
+
+def deform_mesh_obj_manual(selected_obj, cur_vertices):
+    print("befro func: ", id(selected_obj))
+    # 检查选择的对象是否是网格对象
+    mesh = selected_obj.data
+
+    # 获取网格中的顶点数量
+    num_vertices = len(mesh.vertices)
+    
+    # 对每个顶点进行随机移动
+    for i in range(num_vertices):
+        # 获取顶点的坐标
+        vertex = mesh.vertices[i]
+        current_location = selected_obj.matrix_world @ vertex.co
+
+        # 将顶点移动到新位置
+        # new_location = current_location + offset
+        new_location = Vector(cur_vertices[i])
+        selected_obj.data.vertices[i].co = selected_obj.matrix_world.inverted() @ new_location
+        
+        # print("current_location", current_location)
+        # print("new_location", new_location)
+    # 更新网格
+    mesh.update()
+    
+class MocapBlenderOperator(bpy.types.Operator):
+    bl_idname = "wm.mocap_blender"
+    bl_label = "Mocap Blender"
+
+    _timer = None
+    stop: bpy.props.BoolProperty()
+
+    def execute(self, context):
+        # load smplx params
+        B=1
+        fxy_wang= '/home/wanghao/桌面/南岭项目-角色模型/FXY/wang-smplx-betas.pkl'
+        with open('/home/wanghao/下载/000.pkl', 'rb') as f:
+            data = pickle.load(f)
+        self.betas = torch.from_numpy(data['betas']).float().reshape(B, -1)
+        self.expression = torch.from_numpy(data['expression']).float().reshape(B, -1)
+        ## pose
+        self.left_hand_pose = torch.from_numpy(Rotation.from_rotvec(data['left_hand_pose'].reshape(-1, 3)).as_matrix()).float().reshape(B, -1, 3, 3)
+        self.right_hand_pose = torch.from_numpy(Rotation.from_rotvec(data['right_hand_pose'].reshape(-1, 3)).as_matrix()).float().reshape(B, -1, 3, 3)
+        self.jaw_pose = torch.from_numpy(Rotation.from_rotvec(data['jaw_pose'].reshape(-1, 3)).as_matrix()).float().reshape(B, 3, 3)
+        self.leye_pose = torch.from_numpy(Rotation.from_rotvec(data['leye_pose'].reshape(-1, 3)).as_matrix()).float().reshape(B, 3, 3)
+        self.reye_pose = torch.from_numpy(Rotation.from_rotvec(data['reye_pose'].reshape(-1, 3)).as_matrix()).float().reshape(B, 3, 3)
+        print("bone_euler", self.left_hand_pose.shape)
+        
+        # load smplx model
+        self.smplxlayer = SMPLXLayer(model_path='data/smplx', num_betas=300, num_expression_coeffs=100)
+        
+        # blender addon
+        # bpy.app.handlers.frame_change_pre.append(stop_playback)
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.02, window=context.window)
+        wm.modal_handler_add(self)
+        # 初始化骨骼场景
+        self.init_armatures()
+        # 初始化socket
+        self.init_socket()
+        self.nframe = 0
+        return {'RUNNING_MODAL'}
+
+    def init_socket(self):
+        # 创建socket
+        self.server = socket.socket()
+        self.server.bind(('127.0.0.1', port))
+        self.server.listen(5)
+        # 等待客户端连接
+        print("正在连接动作捕捉进程...")
+        self.con, self.addr = self.server.accept()
+        print(f"已连接动作捕捉进程，套接字{self.con}{self.addr}.")
+
+    def init_armatures(self):
+        objs = bpy.data.objects
+        armatures = [obj for obj in objs if obj.type=='ARMATURE']
+        meshes = [obj for obj in objs if obj.type=='MESH']
+        self.skeleton_armature = None
+        self.skin_armature = None
+        self.skin_model = None
+        for armature in armatures:
+            if 'bone' in armature.name:
+                self.skeleton_armature = armature
+            if 'skin' in armature.name:
+                self.skin_armature = armature
+        for mesh in meshes:
+            if '000' in mesh.name:
+                self.skin_model = mesh
+        
+        self.skeleton_armature.location = (0, 0, 0)
+        self.skin_armature.location = (0, 0,0 )
+        self.skin_model.location = (0, 0, 0)
+        print("skeleton_armature", self.skeleton_armature)
+        print("skin_model", self.skin_model)
+        
+    def cancel(self, context):
+        wm = context.window_manager
+        wm.event_timer_remove(self._timer)
+        self.con.close()
+        self.server.close()
+
+    def modal(self, context, event):
+        if (event.type in {'ESC', 'SPACE'}) or self.stop == True:
+            self.cancel(context)
+            return {'CANCELLED'}
+
+        if event.type == "TIMER":
+            recv_data = self.con.recv(1024*5, socket.MSG_WAITALL)
+            if len(recv_data.strip()) == 0:
+                print("接收到的动捕进程的数据为空")
+            elif recv_data.decode() == 'exit':
+                self.stop = True
+            else:
+                # 接收数据
+                content = recv_data.decode().strip()
+                # print(f"接收到的数据为{content}")
+                bone_quats, location, scale, bone_names = str2data(content)
+            
+                # skeletal model deformation
+                for i, b in enumerate(bone_names):
+                    bone0 = self.skeleton_armature.pose.bones[b]
+                    bone1 = self.skin_armature.pose.bones[b]
+                    
+                    # if b in ['right_collar', 'right_shoulder', 'right_elbow', 'right_wrist', 'left_collar', 'left_shoulder', 'left_elbow', 'left_wrist']:  # SMPLX
+                    #     bone0.rotation_mode = "XYZ"
+                    #     bone1.rotation_mode = "XYZ"
+                    # else:
+                    #     bone0.rotation_mode = "YXZ"
+                    #     bone1.rotation_mode = "YXZ"
+                    bone0.rotation_mode = "QUATERNION"
+                    bone1.rotation_mode = "QUATERNION"
+                    
+                    bone0.rotation_quaternion = bone_quats[i]
+                    bone1.rotation_quaternion = bone_quats[i]
+
+                    # if 'pelvis' in b:
+                    #     bone0.location = location[0]/100,-location[2]/100,location[1]/100
+                    #     bone1.location = location[0]/100,-location[2]/100,location[1]/100
+                        
+                # # skine model deformation
+                # pdb.set_trace()
+                bone_quats = motion_pose_to_smplx_pose(np.array(bone_quats))
+                bone_quats = bone_quats[..., [1, 2, 3, 0]]
+                pose_smplx = torch.from_numpy(Rotation.from_quat(bone_quats[1:22]).as_matrix()).float().reshape(1, -1, 3, 3)
+                # transl = torch.tensor([location[0],-location[2],location[1]]).float().reshape(1, 3)/100
+                transl = torch.zeros(1, 3, dtype=torch.float32)
+                global_orient = Rotation.from_quat(bone_quats[0]).as_matrix()
+                R_x_n90 = rot_fun('x', 90)
+                global_orient = R_x_n90 @ global_orient
+                global_orient = torch.from_numpy(global_orient).float().reshape(1, 3, 3)
+                output = self.smplxlayer(self.betas, 
+                        global_orient, 
+                        pose_smplx,
+                        self.left_hand_pose, 
+                        self.right_hand_pose, 
+                        transl,
+                        self.expression,
+                        self.jaw_pose, 
+                        self.leye_pose, 
+                        self.reye_pose,
+                        return_verts=True,
+                        return_full_pose=True)
+                # import trimesh
+                # trimesh.Trimesh(output.vertices.reshape(-1, 3).detach().cpu().numpy()).export(f"vertices_{self.nframe}.obj")
+                cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy()
+                cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
+                print("befro func: ", id(self.skin_model))
+                deform_mesh_obj_manual(self.skin_model, cur_vertices)
+                
+                
+                x, y, z = location
+                self.skeleton_armature.location = x/100, -z/100, y/100
+                self.skin_armature.location = x/100, -z/100, y/100
+                self.skin_model.location = x/100, -z/100, y/100
+                print(f"x: {x} ,y: {y} ,z: {z} ")
+                self.skeleton_armature.keyframe_insert(data_path="location", index=-1)
+                self.skin_armature.keyframe_insert(data_path="location", index=-1)
+                self.skin_model.keyframe_insert(data_path="location", index=-1)
+                self.nframe += 1
+                print(self.nframe)
+
+        return {'PASS_THROUGH'}
+
+
+class MocapPanel(bpy.types.WorkSpaceTool):
+    """Creates a Panel in the Object properties window"""
+    bl_label = "MocapPanel"
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'OBJECT'
+    bl_idname = "ui_plus.mocap"
+    bl_icon = "ops.generic.select_circle"
+
+    def draw_settings(context, layout, tool):
+        row = layout.row()
+        op = row.operator("wm.mocap_blender", text="Mocap",
+                          icon="OUTLINER_OB_CAMERA")
+        # props = tool.operator_properties("wm.opencv_operator")
+        # layout.prop(props, "stop", text="Stop Capture")
+        # layout.prop(tool.op, "stop", text="Stop Capture")
+
+
+def register():
+    bpy.utils.register_class(MocapBlenderOperator)
+    bpy.utils.register_tool(MocapPanel, separator=True, group=True)
+
+
+def unregister():
+    bpy.utils.unregister_class(MocapBlenderOperator)
+    bpy.utils.unregister_tool(MocapPanel)
+
+
+if __name__ == "__main__":
+    register()

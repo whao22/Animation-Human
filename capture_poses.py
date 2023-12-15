@@ -10,6 +10,8 @@ import numpy as np
 import torch
 import json
 from tqdm import tqdm
+import pdb
+
 from scipy.spatial.transform import Rotation
 from bvh import Bvh
 # pt 15 原地挥动双手
@@ -204,187 +206,59 @@ class BVH_paser():
 
 
 def deformation(rotations):
+    """_summary_
+
+    Args:
+        rotations (ndarray): shape (N_frames, N_joints, 3), where the N_joints is 23.
+
+    Returns:
+        _type_: _description_
+    """
+    N_frames, N_joints, _ = rotations.shape
     # rest pose bone matrix
     bone_rest_matrix = np.zeros([len(rotations[0]), 3, 3])
-    bone_rest_matrix[0] = pelvis_rest = np.array(
-        [[1, 0, 0], [0, 0.9939, 0.1104], [0, -0.1104, 0.9939]])
-    bone_rest_matrix[1] = chest_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[2] = chest2_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[3] = chest3_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[4] = chest4_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[5] = neck_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    bone_rest_matrix[6] = head_rest = np.array(
-        [[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-
-    bone_rest_matrix[7] = rcollar_rest = np.array(
-        [[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[8] = rshoulder_rest = np.array(
-        [[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[9] = relbow_rest = np.array(
-        [[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[10] = rwrist_rest = np.array(
-        [[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-
-    bone_rest_matrix[11] = lcollar_rest = np.array(
-        [[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[12] = lshouder_rest = np.array(
-        [[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[13] = lelbow_rest = np.array(
-        [[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
-    bone_rest_matrix[14] = lwrist_rest = np.array(
-        [[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
-
-    bone_rest_matrix[15] = rhip_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[16] = rknee_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[17] = rankle_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[18] = rtoe_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[19] = lhip_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[20] = lknee_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[21] = lankle_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-    bone_rest_matrix[22] = ltoe_rest = np.array(
-        [[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-
+    bone_rest_matrix[0] = np.array([[1, 0, 0], [0, 0.9939, 0.1104], [0, -0.1104, 0.9939]])
+    bone_rest_matrix[1:7] = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    bone_rest_matrix[7:11] = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+    bone_rest_matrix[11:15] = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
+    bone_rest_matrix[15:23] = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+    
     # poses matrix
-    for j, rotation in enumerate(rotations):
-        for i in range(len(rotation)):
-            bone_matrix = Rotation.from_euler(
-                seq="YXZ", angles=rotation[i], degrees=True).as_matrix()
-            bone_matrix = np.linalg.inv(
-                bone_rest_matrix[i]) @ bone_matrix @ bone_rest_matrix[i]
-            tmp = Rotation.from_matrix(
-                bone_matrix).as_euler("ZXY", degrees=False)
-            if i >= 0 and i <= 6:  # spine
-                rotations[j, i, 0] = tmp[1]
-                rotations[j, i, 1] = tmp[2]
-                rotations[j, i, 2] = tmp[0]
-            if i >= 7 and i <= 10:  # r arms
-                rotations[j, i, 0] = -tmp[2]
-                rotations[j, i, 1] = tmp[1]
-                rotations[j, i, 2] = tmp[0]
-            if i >= 11 and i <= 14:  # l arms
-                rotations[j, i, 0] = tmp[2]
-                rotations[j, i, 1] = -tmp[1]
-                rotations[j, i, 2] = tmp[0]
-            if i >= 15 and i <= 22:  # r&l legs
-                rotations[j, i, 0] = -tmp[1]
-                rotations[j, i, 1] = -tmp[2]
-                rotations[j, i, 2] = tmp[0]
+    bone_matrix = Rotation.from_euler(seq="YXZ", angles=rotations.reshape(-1, 3), degrees=True).as_matrix().reshape(N_frames, N_joints, 3, 3) # (N_frames, N_joints, 3, 3)
+    # bone_matrix = np.linalg.inv(bone_rest_matrix[None, ...]) @ bone_matrix @ bone_rest_matrix[None, ...] # (N_frames, N_joints, 3, 3)
+    
+    bone_quat = Rotation.from_matrix(bone_matrix.reshape(-1, 3, 3)).as_quat(True).reshape(N_frames, N_joints, 4) # (x, y, z, w)
+    bone_quat = bone_quat[..., [-1, 0, 1, 2]] # (w, x, y, z)
+    
+    # rotations[:, :7] = rotations[:, :7][..., [1, 2, 0]] * np.array([[[[1, 1, 1]]]])
+    # rotations[:, 7:11] = rotations[:, 7:11][..., [2, 1, 0]] * np.array([[[[-1, 1, 1]]]])
+    # rotations[:, 11:14] = rotations[:, 11:14][..., [2, 1, 0]] * np.array([[[[1, -1, 1]]]])
+    # rotations[:, 14:] = rotations[:, 14:][..., [1, 2, 0]] * np.array([[[[-1, -1, 1]]]])
+    # for j, rotation in enumerate(rotations):
+    #     for i in range(len(rotation)):
+    #         tmp = tmps_lst[j, i]
+    #         if i >= 0 and i <= 6:  # spine
+    #             rotations[j, i, 0] = tmp[1]
+    #             rotations[j, i, 1] = tmp[2]
+    #             rotations[j, i, 2] = tmp[0]
+    #         if i >= 7 and i <= 10:  # r arms
+    #             rotations[j, i, 0] = -tmp[2]
+    #             rotations[j, i, 1] = tmp[1]
+    #             rotations[j, i, 2] = tmp[0]
+    #         if i >= 11 and i <= 14:  # l arms
+    #             rotations[j, i, 0] = tmp[2]
+    #             rotations[j, i, 1] = -tmp[1]
+    #             rotations[j, i, 2] = tmp[0]
+    #         if i >= 15 and i <= 22:  # r&l legs
+    #             rotations[j, i, 0] = -tmp[1]
+    #             rotations[j, i, 1] = -tmp[2]
+    #             rotations[j, i, 2] = tmp[0]
 
-    # # Spine
-    # tmp[:,:7,0]=rotations[:,:7,1]
-    # tmp[:,:7,1]=rotations[:,:7,0]
-    # tmp[:,:7,2]=rotations[:,:7,2]
-    # # RCollar
-    # # tmp[:,7:11,0]=rotations[:,7:11,0]
-    # # tmp[:,7:11,1]=-rotations[:,7:11,1]
-    # # tmp[:,7:11,2]=rotations[:,7:11,2]
-    # tmp[:,7:11,0]=rotations[:,7:11,1]
-    # tmp[:,7:11,1]=rotations[:,7:11,0]
-    # tmp[:,7:11,2]=rotations[:,7:11,2]
-    # # LCollar
-    # tmp[:,11:15,0]=rotations[:,11:15,0]
-    # tmp[:,11:15,1]=rotations[:,11:15,1]
-    # tmp[:,11:15,2]=rotations[:,11:15,2]
-    # # tmp[:,11:15,0]=rotations[:,11:15,1]
-    # # tmp[:,11:15,1]=-rotations[:,11:15,0]
-    # # tmp[:,11:15,2]=rotations[:,11:15,2]
-    # # RLHips
-    # tmp[:,15:,0]=rotations[:,15:,1]
-    # tmp[:,15:,1]=-rotations[:,15:,0]
-    # tmp[:,15:,2]=rotations[:,15:,2]
-
-    # # 0Hips
-    # tmp[:,0,[0,1,2]]=rotations[:,0,[1,0,2]]*np.array([1,1,1])
-    # ## 1Chest
-    # tmp[:,1,[0,1,2]]=rotations[:,1,[1,0,2]]*np.array([1,1,1])
-    # ### 2Chest2
-    # tmp[:,2,[0,1,2]]=rotations[:,2,[1,0,2]]*np.array([1,1,1])
-    # #### 3Chest3
-    # tmp[:,3,[0,1,2]]=rotations[:,3,[1,0,2]]*np.array([1,1,1])
-    # ##### 4Chest4
-    # tmp[:,4,[0,1,2]]=rotations[:,4,[1,0,2]]*np.array([1,1,1])
-    # ###### 5Neck
-    # tmp[:,5,[0,1,2]]=rotations[:,5,[1,0,2]]*np.array([1,1,1])
-    # ####### 6Head
-    # tmp[:,6,[0,1,2]]=rotations[:,6,[1,0,2]]*np.array([1,1,1])
-
-    # ###### 7RightCollar XYZ
-    # tmp[:,7,[0,1,2]]=rotations[:,7,[1,0,2]]*np.array([1,1,1])
-    # ####### 8RightShoulder XYZ
-    # tmp[:,8,[0,1,2]]=rotations[:,8,[1,0,2]]*np.array([1,1,1])
-    # ######## 9RightElbow XYZ
-    # tmp[:,9,[0,1,2]]=rotations[:,9,[1,0,2]]*np.array([1,1,1])
-    # ######### 10RightWrist XYZ
-    # tmp[:,10,[0,1,2]]=rotations[:,10,[1,0,2]]*np.array([1,1,1])
-
-    # ###### 11LeftCollar XYZ
-    # tmp[:,11,[0,1,2]]=rotations[:,11,[1,0,2]]*np.array([1,1,1])
-    # ####### 12LeftShoulder XYZ
-    # tmp[:,12,[0,1,2]]=rotations[:,12,[1,0,2]]*np.array([1,1,1])
-    # ######## 13LeftElbow XYZ
-    # tmp[:,13,[0,1,2]]=rotations[:,13,[1,0,2]]*np.array([1,-1,1])
-    # ######### 14LeftWrist XYZ
-    # tmp[:,14,[0,1,2]]=rotations[:,14,[1,0,2]]*np.array([1,1,1])
-
-    # ## 15RightHip YXZ
-    # tmp[:,15,[0,1,2]]=rotations[:,15,[1,0,2]]*np.array([1,-1,1])
-    # ### 16RightKnee YXZ
-    # tmp[:,16,[0,1,2]]=rotations[:,16,[1,0,2]]*np.array([1,-1,1])
-    # #### 17RightAnkle ZXY
-    # tmp[:,17,[0,1,2]]=rotations[:,17,[1,0,2]]*np.array([1,1,1])
-    # ##### 18RightToe ZXY
-    # tmp[:,18,[0,1,2]]=rotations[:,18,[1,0,2]]*np.array([1,1,1])
-
-    # ## 19LeftHip YXZ
-    # tmp[:,19,[0,1,2]]=rotations[:,19,[1,0,2]]*np.array([1,-1,1])
-    # ### 20LeftKnee YXZ
-    # tmp[:,20,[0,1,2]]=rotations[:,20,[1,0,2]]*np.array([1,-1,1])
-    # #### 21LeftAnkle ZXY
-    # tmp[:,21,[0,1,2]]=rotations[:,21,[1,0,2]]*np.array([1,1,1])
-    # ##### 22LeftToe ZXY
-    # tmp[:,22,[0,1,2]]=rotations[:,22,[1,0,2]]*np.array([1,1,1])
-
-    return rotations
+    return bone_quat
 
 
 def transaction2(args):
-    # SMPL
-    # dict={"bone_names": ['Pelvis',
-    #                'Spine1',
-    #                'Spine2',
-    #                'Spine2',
-    #                'Spine3',
-    #                'Neck',
-    #                'Head',
-    #                'R_Collar',
-    #                'R_Shoulder',
-    #                'R_Elbow',
-    #                'R_Wrist',
-    #                'L_Collar',
-    #                'L_Shoulder',
-    #                'L_Elbow',
-    #                'L_Wrist',
-    #                'R_Hip',
-    #                'R_Knee',
-    #                'R_Ankle',
-    #                'R_Foot',
-    #                'L_Hip',
-    #                'L_Knee',
-    #                'L_Ankle',
-    #                'L_Foot']}
-    # SMPLX
+    # bone order of XSENS for SMPLX
     dict = {"bone_names": ['pelvis',
                            'spine1',
                            'spine2',
@@ -416,9 +290,8 @@ def transaction2(args):
     motion = bvh.get_3D_motion()
     motion = np.array(motion)
     translations = motion[:, :3]  # N*3
-    rotations = motion[:, 3:].reshape(
-        motion.shape[0], -1, 3)  # YXZ, N*23*3, radias angle
-    rotations = deformation(rotations)
+    rotations = motion[:, 3:].reshape(motion.shape[0], -1, 3)  # YXZ, N*23*3, radias angle
+    quaternions = deformation(rotations) # (N_frames, N_joints, 4)
 
     def data2str2(bone_euler, location, scale, bone_names):
         data = {}
@@ -431,15 +304,14 @@ def transaction2(args):
     client = socket.socket()
     client.connect(('127.0.0.1', args.port))
 
-    p, t = rotations, translations
     while True:
-        for bone_euler, location in zip(p, t):
-            send_data = data2str2(bone_euler, location, 1, dict['bone_names'])
+        for quat, location in zip(quaternions, translations):
+            send_data = data2str2(quat, location, 1, dict['bone_names'])
 
             print(send_data.encode())
             send_data = send_data+' '*(1024*5-len(send_data))
             client.send(send_data.encode())
-            time.sleep(0.033)
+            # time.sleep(0.033)
 
 
 def transaction3(args):
