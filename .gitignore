@@ -1,5 +1,11 @@
-blends
-data
 __pycache__
 .vscode
+
+data
+blends
+third_parties
+
+*.npy
+*.npz
+*.obj
 *.blend

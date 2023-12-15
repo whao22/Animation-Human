@@ -3,6 +3,8 @@ import socket
 import json
 import time
 import pickle
+from mathutils import Vector
+
 import sys
 sys.path.append(".")
 import numpy as np
@@ -10,7 +12,6 @@ from scipy.spatial.transform import Rotation
 import torch
 import pdb
 
-from mathutils import Vector
 from libs.smplx.body_models import SMPLXLayer
 
 port = 6666
@@ -162,30 +163,19 @@ class MocapBlenderOperator(bpy.types.Operator):
                 for i, b in enumerate(bone_names):
                     bone0 = self.skeleton_armature.pose.bones[b]
                     bone1 = self.skin_armature.pose.bones[b]
-                    
-                    # if b in ['right_collar', 'right_shoulder', 'right_elbow', 'right_wrist', 'left_collar', 'left_shoulder', 'left_elbow', 'left_wrist']:  # SMPLX
-                    #     bone0.rotation_mode = "XYZ"
-                    #     bone1.rotation_mode = "XYZ"
-                    # else:
-                    #     bone0.rotation_mode = "YXZ"
-                    #     bone1.rotation_mode = "YXZ"
+            
                     bone0.rotation_mode = "QUATERNION"
                     bone1.rotation_mode = "QUATERNION"
                     
                     bone0.rotation_quaternion = bone_quats[i]
                     bone1.rotation_quaternion = bone_quats[i]
 
-                    # if 'pelvis' in b:
-                    #     bone0.location = location[0]/100,-location[2]/100,location[1]/100
-                    #     bone1.location = location[0]/100,-location[2]/100,location[1]/100
-                        
-                # # skine model deformation
-                # pdb.set_trace()
+                # skin model deformation
                 bone_quats = motion_pose_to_smplx_pose(np.array(bone_quats))
                 bone_quats = bone_quats[..., [1, 2, 3, 0]]
                 pose_smplx = torch.from_numpy(Rotation.from_quat(bone_quats[1:22]).as_matrix()).float().reshape(1, -1, 3, 3)
-                # transl = torch.tensor([location[0],-location[2],location[1]]).float().reshape(1, 3)/100
-                transl = torch.zeros(1, 3, dtype=torch.float32)
+                transl = torch.tensor([location[0],-location[2],location[1]]).float().reshape(1, 3)/100
+                # transl = torch.zeros(1, 3, dtype=torch.float32)
                 global_orient = Rotation.from_quat(bone_quats[0]).as_matrix()
                 R_x_n90 = rot_fun('x', 90)
                 global_orient = R_x_n90 @ global_orient
@@ -205,7 +195,7 @@ class MocapBlenderOperator(bpy.types.Operator):
                 # import trimesh
                 # trimesh.Trimesh(output.vertices.reshape(-1, 3).detach().cpu().numpy()).export(f"vertices_{self.nframe}.obj")
                 cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy()
-                cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
+                # cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
                 print("befro func: ", id(self.skin_model))
                 deform_mesh_obj_manual(self.skin_model, cur_vertices)
                 

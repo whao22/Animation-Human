@@ -1,0 +1,3 @@
+[submodule "third_parties/blender-mathutils"]
+	path = third_parties/blender-mathutils
+	url = https://gitlab.com/ideasman42/blender-mathutils.git
