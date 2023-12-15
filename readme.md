@@ -28,6 +28,8 @@ bash scripts/client_start.sh
 
 The characters in Blender will animate according to the provided motion. You can change the character by replacing a different .blend file in the server_start.sh script, but please remember to modify the bone mapping in capture_poses.py accordingly.
 
+Introduce a new smplx deformation mode for maintaining volume consistency during deformation.
+
 ## Scripts
 
 The script in `tools/paint_weights.py` used for assign weights for all points in each vertex group. Please add your bone armature into an empty .blend file and run `blender path/to/xx.blend -P tools/paint_weights.py`.
