@@ -13,7 +13,8 @@ from tqdm import tqdm
 import pdb
 
 from scipy.spatial.transform import Rotation
-from libs.bvh.bvh import Bvh
+from bvh import Bvh
+
 # pt 15 原地挥动双手
 
 # dict1={"bone_names": ['00',

@@ -1,3 +1,6 @@
 [submodule "third_parties/blender-mathutils"]
 	path = third_parties/blender-mathutils
 	url = https://gitlab.com/ideasman42/blender-mathutils.git
+[submodule "third_parties/bvh-python"]
+	path = third_parties/bvh-python
+	url = https://github.com/20tab/bvh-python.git
