@@ -13,49 +13,15 @@ import torch
 import pdb
 
 from libs.smplx.body_models import SMPLXLayer
+from libs.utils import parse_recv_data, motion_pose_to_smplx_pose, rotation_mat, deform_mesh_obj_manual
 
 port = 6666
-
-def rot_fun(axis, angle):
-    matrix = Rotation.from_euler(axis, angle, degrees=True).as_matrix()
-    return matrix
-    
-
-def str2data(content):
-    data = json.loads(content)
-    return data['bone_euler'], data['location'], float(data['scale']), data['bone_names']
-
 
 def stop_playback(scene):
     print(f"{scene.frame_current} / {scene.frame_end}")
     if scene.frame_current == scene.frame_end:
         bpy.ops.screen.animation_cancel(restore_frame=False)
 
-def motion_pose_to_smplx_pose(pose):
-    """_summary_
-
-    Args:
-        pose (ndarray): motion pose from xsens, shape (23, 3)
-    """
-    corresponding_bone_idx = [0, 19, 15, 1, 20, 16, 3, 21, 17, 4, 22, 18, 5, 11, 7, 6, 12, 8, 13, 9, 14, 10, -1, -1]
-    ret_pose = pose[corresponding_bone_idx]
-    
-    return ret_pose
-
-def deform_mesh_obj_manual(selected_obj, cur_vertices):
-    # 检查选择的对象是否是网格对象
-    mesh = selected_obj.data
-
-    # 获取网格中的顶点数量
-    num_vertices = len(mesh.vertices)
-    
-    # 对每个顶点进行随机移动
-    for i in range(num_vertices):
-        new_location = Vector(cur_vertices[i])
-        selected_obj.data.vertices[i].co = selected_obj.matrix_world.inverted() @ new_location
-        
-    # 更新网格
-    mesh.update()
     
 class MocapBlenderOperator(bpy.types.Operator):
     bl_idname = "wm.mocap_blender"
@@ -140,67 +106,64 @@ class MocapBlenderOperator(bpy.types.Operator):
 
         if event.type == "TIMER":
             recv_data = self.con.recv(1024*5, socket.MSG_WAITALL)
-            if len(recv_data.strip()) == 0:
-                print("接收到的动捕进程的数据为空")
-            elif recv_data.decode() == 'exit':
-                self.stop = True
-            else:
-                # 接收数据
-                content = recv_data.decode().strip()
-                # print(f"接收到的数据为{content}")
-                bone_quats, location, scale, bone_names = str2data(content)
+            parsed_data = parse_recv_data(recv_data)
+            bone_quats = parsed_data['poses']
+            locations = parsed_data['locations']
+            scale = parsed_data['scale']
+            bone_names = parsed_data['bone_names']
             
-                # skeletal model deformation
-                for i, b in enumerate(bone_names):
-                    bone0 = self.skeleton_armature.pose.bones[b]
-                    bone1 = self.skin_armature.pose.bones[b]
             
-                    bone0.rotation_mode = "QUATERNION"
-                    bone1.rotation_mode = "QUATERNION"
-                    
-                    bone0.rotation_quaternion = bone_quats[i]
-                    bone1.rotation_quaternion = bone_quats[i]
-                    
-                # skin model deformation
-                bone_quats = motion_pose_to_smplx_pose(np.array(bone_quats))
-                bone_quats = bone_quats[..., [1, 2, 3, 0]] # (x, y, z, w)
-                body_poses = Rotation.from_quat(bone_quats).as_matrix()
+            # skeletal model deformation
+            for i, b in enumerate(bone_names):
+                bone0 = self.skeleton_armature.pose.bones[b]
+                bone1 = self.skin_armature.pose.bones[b]
+        
+                bone0.rotation_mode = "QUATERNION"
+                bone1.rotation_mode = "QUATERNION"
                 
-                pose_smplx = torch.from_numpy(body_poses[1:22]).float().reshape(1, -1, 3, 3)
-                transl = torch.zeros(1, 3, dtype=torch.float32)
-                global_orient = torch.from_numpy(body_poses[0]).float().reshape(1, 3, 3)
+                bone0.rotation_quaternion = bone_quats[i]
+                bone1.rotation_quaternion = bone_quats[i]
                 
-                output = self.smplxlayer(self.betas, 
-                        global_orient, 
-                        pose_smplx,
-                        self.left_hand_pose, 
-                        self.right_hand_pose, 
-                        transl,
-                        self.expression,
-                        self.jaw_pose, 
-                        self.leye_pose, 
-                        self.reye_pose,
-                        return_verts=True,
-                        return_full_pose=True)
-                
-                cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy() # (N_points, 3)
-                # rotation 90
-                R_x_p90 = rot_fun('xyz', (90, 0, 0)) # (3, 3)
-                cur_vertices = (R_x_p90 @ cur_vertices[..., None]).squeeze()
-                # translation 
-                cur_vertices = cur_vertices + np.array([[location[0],-location[2],location[1]]]) / 100
-                
-                deform_mesh_obj_manual(self.skin_model, cur_vertices)
-                
-                
-                x, y, z = location
-                self.skeleton_armature.location = x/100, -z/100, y/100
-                self.skin_armature.location = x/100, -z/100, y/100
-                self.skeleton_armature.keyframe_insert(data_path="location", index=-1)
-                self.skin_armature.keyframe_insert(data_path="location", index=-1)
-                self.skin_model.keyframe_insert(data_path="location", index=-1)
-                self.nframe += 1
-                print(self.nframe)
+            # skin model deformation
+            bone_quats = motion_pose_to_smplx_pose(np.array(bone_quats))
+            bone_quats = bone_quats[..., [1, 2, 3, 0]] # (x, y, z, w)
+            body_poses = Rotation.from_quat(bone_quats).as_matrix()
+            
+            pose_smplx = torch.from_numpy(body_poses[1:22]).float().reshape(1, -1, 3, 3)
+            transl = torch.zeros(1, 3, dtype=torch.float32)
+            global_orient = torch.from_numpy(body_poses[0]).float().reshape(1, 3, 3)
+            
+            output = self.smplxlayer(self.betas, 
+                    global_orient, 
+                    pose_smplx,
+                    self.left_hand_pose, 
+                    self.right_hand_pose, 
+                    transl,
+                    self.expression,
+                    self.jaw_pose, 
+                    self.leye_pose, 
+                    self.reye_pose,
+                    return_verts=True,
+                    return_full_pose=True)
+            
+            cur_vertices = output.vertices.reshape(-1, 3).detach().cpu().numpy() # (N_points, 3)
+            # rotation 90
+            R_x_p90 = rotation_mat('xyz', (90, 0, 0)) # (3, 3)
+            cur_vertices = (R_x_p90 @ cur_vertices[..., None]).squeeze()
+            # translation 
+            cur_vertices = cur_vertices + np.array([[locations[0],-locations[2],locations[1]]]) / 100
+            
+            deform_mesh_obj_manual(self.skin_model, cur_vertices)
+            
+            
+            x, y, z = locations
+            self.skeleton_armature.location = x/100, -z/100, y/100
+            self.skin_armature.location = x/100, -z/100, y/100
+            self.skeleton_armature.keyframe_insert(data_path="location", index=-1)
+            self.skin_armature.keyframe_insert(data_path="location", index=-1)
+            self.skin_model.keyframe_insert(data_path="location", index=-1)
+            self.nframe += 1
+            print(self.nframe)
 
         return {'PASS_THROUGH'}
 

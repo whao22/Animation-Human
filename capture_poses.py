@@ -264,8 +264,8 @@ def transaction2(args):
 
     def data2str2(bone_euler, location, scale, bone_names):
         data = {}
-        data['bone_euler'] = bone_euler.tolist()
-        data['location'] = location.tolist()
+        data['poses'] = bone_euler.tolist()
+        data['locations'] = location.tolist()
         data['scale'] = scale
         data['bone_names'] = bone_names
         return json.dumps(data)
