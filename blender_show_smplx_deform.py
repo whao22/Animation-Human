@@ -34,7 +34,7 @@ class MocapBlenderOperator(bpy.types.Operator):
         # load smplx params
         B=1
         fxy_wang= '/home/wanghao/桌面/南岭项目-角色模型/FXY/wang-smplx-betas.pkl'
-        with open('data/mesh_data/wanghao.pkl', 'rb') as f:
+        with open('data/mesh_data/cao-smplx-betas.pkl', 'rb') as f:
             data = pickle.load(f)
         self.betas = torch.from_numpy(data['betas']).float().reshape(B, -1)
         self.expression = torch.from_numpy(data['expression']).float().reshape(B, -1)
@@ -47,7 +47,7 @@ class MocapBlenderOperator(bpy.types.Operator):
         print("bone_euler", self.left_hand_pose.shape)
         
         # load smplx model
-        self.smplxlayer = SMPLXLayer(model_path='data/smplx', num_betas=300, num_expression_coeffs=100)
+        self.smplxlayer = SMPLXLayer(model_path='data/smplx', num_betas=self.betas.shape[-1], num_expression_coeffs=self.expression.shape[-1])
         
         # blender addon
         # bpy.app.handlers.frame_change_pre.append(stop_playback)
