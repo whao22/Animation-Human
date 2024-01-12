@@ -253,7 +253,7 @@ def transaction2(args):
                            'left_foot']}
     # 读取bvh文件
     # bvh_file_path = "/home/wanghao/桌面/南岭项目-角色模型/XSENS数据/9.8测试数据-wh-1.8/Xsens DATA/NPose/New Session-001.bvh"  # 替换为您的BVH文件路径
-    bvh_file_path = "data/motion_data/cao-3000-14.bvh"  # 替换为您的BVH文件路径
+    bvh_file_path = "data/motion_data/cao-taijie-005.bvh"  # 替换为您的BVH文件路径
 
     bvh = BVH_paser(bvh_file_path)
     motion = bvh.get_3D_motion()
